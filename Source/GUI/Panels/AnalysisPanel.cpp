@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+bool AnalysisPanel::normalise = true;
+
 void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
   if (pAudioModel == nullptr || pAudioModel->getLengthInSamples() <= 0) {
     ImGui::TextDisabled("No audio loaded.");
@@ -40,13 +42,21 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
   // 1.6 Global Trends Plot (Time-Series)
   const auto &series = pAudioModel->getGlobalSeries();
   if (!series.time.empty()) {
+
+    ImGui::Checkbox("Normalised?", &AnalysisPanel::normalise);
+
     // Use half of available space for trends, or fixed fraction
     float trendsHeight = ImGui::GetContentRegionAvail().y * 0.45f;
-    if (ImPlot::BeginPlot("Global Feature Trends (Normalized)",
-                          ImVec2(-1, trendsHeight))) {
+    const char *plotTitle = normalise ? "Global Feature Trends (Normalized)"
+                                      : "Global Feature Trends";
+    if (ImPlot::BeginPlot(plotTitle, ImVec2(-1, trendsHeight))) {
       ImPlot::SetupAxisLimits(ImAxis_X1, 0, pAudioModel->getLengthInSeconds());
-      ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1.1);
-      ImPlot::SetupAxes("Time (s)", "Normalized Value");
+      if (normalise) {
+        ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1.1);
+        ImPlot::SetupAxes("Time (s)", "Normalized Value");
+      } else {
+        ImPlot::SetupAxes("Time (s)", "Value");
+      }
 
       auto normalize = [](const std::vector<float> &data) {
         if (data.empty())
@@ -60,23 +70,38 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
         return norm;
       };
 
-      // Plotting normalized versions to see trends together
-      auto v_norm = normalize(series.volume);
-      auto c_norm = normalize(series.centroid);
-      auto b_norm = normalize(series.bandwidth);
-      auto f_norm = series.flatness; // Flatness is already 0..1
-      auto cr_norm = normalize(series.crestFactor);
+      if (normalise) {
+        // Plotting normalized versions to see trends together
+        auto v_norm = normalize(series.volume);
+        auto c_norm = normalize(series.centroid);
+        auto b_norm = normalize(series.bandwidth);
+        auto f_norm = series.flatness; // Flatness is already 0..1
+        auto cr_norm = normalize(series.crestFactor);
 
-      ImPlot::PlotLine("Volume", series.time.data(), v_norm.data(),
-                       static_cast<int>(series.time.size()));
-      ImPlot::PlotLine("Centroid", series.time.data(), c_norm.data(),
-                       static_cast<int>(series.time.size()));
-      ImPlot::PlotLine("Bandwidth", series.time.data(), b_norm.data(),
-                       static_cast<int>(series.time.size()));
-      ImPlot::PlotLine("Flatness", series.time.data(), f_norm.data(),
-                       static_cast<int>(series.time.size()));
-      ImPlot::PlotLine("Crest Factor", series.time.data(), cr_norm.data(),
-                       static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Volume", series.time.data(), v_norm.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Centroid", series.time.data(), c_norm.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Bandwidth", series.time.data(), b_norm.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Flatness", series.time.data(), f_norm.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Crest Factor", series.time.data(), cr_norm.data(),
+                         static_cast<int>(series.time.size()));
+      } else {
+        ImPlot::PlotLine("Volume", series.time.data(), series.volume.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Centroid", series.time.data(), series.centroid.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Bandwidth", series.time.data(),
+                         series.bandwidth.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Flatness", series.time.data(), series.flatness.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::PlotLine("Crest Factor", series.time.data(),
+                         series.crestFactor.data(),
+                         static_cast<int>(series.time.size()));
+      }
 
       ImPlot::EndPlot();
     }
