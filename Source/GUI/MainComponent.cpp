@@ -155,16 +155,23 @@ void MainComponent::renderOpenGL() {
 
     // Audio Waveform Window
     ImGui::SetNextWindowPos(ImVec2(0, 0 + imguiOffsetY));
-    ImGui::SetNextWindowSize(ImVec2(0.7 * getWidth(), 0.5 * getHeight()));
+    ImGui::SetNextWindowSize(ImVec2(0.7 * getWidth(), 0.3 * getHeight()));
     ImGui::Begin("Audio waveform", NULL, commonFlags);
     waveformPanel.render(pAudioModel.get(), getWidth(), getHeight());
     ImGui::End();
 
     // Headers Window
     ImGui::SetNextWindowPos(ImVec2(0.7 * getWidth(), 0 + imguiOffsetY));
-    ImGui::SetNextWindowSize(ImVec2(0.3 * getWidth(), 0.5 * getHeight()));
+    ImGui::SetNextWindowSize(ImVec2(0.3 * getWidth(), 0.3 * getHeight()));
     ImGui::Begin("Headers", NULL, commonFlags);
     headerPanel.render(pAudioModel.get());
+    ImGui::End();
+
+    // Analysis Window
+    ImGui::SetNextWindowPos(ImVec2(0, 0.3 * getHeight() + imguiOffsetY));
+    ImGui::SetNextWindowSize(ImVec2(getWidth(), 0.7 * getHeight()));
+    ImGui::Begin("Analysis", NULL, commonFlags);
+    AnalysisPanel::render(pAudioModel.get(), getWidth(), getHeight());
     ImGui::End();
   }
 

@@ -2,7 +2,7 @@
 
 #include "../Model/AudioModel.h"
 
-class WaveformPanel {
+class AnalysisPanel {
 public:
   static void render(AudioModel *pAudioModel, int width, int height);
 };

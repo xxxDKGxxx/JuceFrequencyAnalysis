@@ -3,7 +3,7 @@
 #include "implot.h"
 #include <algorithm>
 
-void WaveformPanel::render(const AudioModel *pAudioModel, int width,
+void WaveformPanel::render(AudioModel *pAudioModel, int width,
                            int height) {
   if (pAudioModel == nullptr || pAudioModel->getLengthInSamples() <= 0) {
     ImGui::TextDisabled("No audio loaded.");
@@ -24,6 +24,15 @@ void WaveformPanel::render(const AudioModel *pAudioModel, int width,
 
     // Decision: How many samples are in the visible range?
     double visibleSamples = visibleDuration * sampleRate;
+
+    // Selection logic
+    double selectionStart = pAudioModel->getSelectionStart();
+    double selectionEnd = pAudioModel->getSelectionEnd();
+
+    if (ImPlot::DragRect(0, &selectionStart, &limits.Y.Min, &selectionEnd, &limits.Y.Max, ImVec4(1,1,0,0.3f))) {
+      // User is dragging the selection
+      pAudioModel->setSelection(selectionStart, selectionEnd);
+    }
 
     // If more than 100,000 samples are visible, use the thumbnail
     if (visibleSamples > 100000) {

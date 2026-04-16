@@ -49,7 +49,7 @@ target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PUBLIC imgui)
 
 juce_add_gui_app(App
-    PRODUCT_NAME "Sound Analyzer")
+    PRODUCT_NAME "Frequency Analyzer")
 
 file(GLOB_RECURSE ALL_SOURCE_FILES CONFIGURE_DEPENDS
     "Source/*.cpp"
@@ -79,6 +79,7 @@ target_link_libraries(App PRIVATE
     juce::juce_core
     
     juce::juce_opengl
+    juce::juce_dsp
     imgui
     imgui_impl_juce
     implot)

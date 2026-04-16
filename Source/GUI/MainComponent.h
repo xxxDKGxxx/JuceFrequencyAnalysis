@@ -2,6 +2,7 @@
 
 #include "Menu/MenuModel.h"
 #include "Model/AudioModel.h"
+#include "Panels/AnalysisPanel.h"
 #include "Panels/HeaderPanel.h"
 #include "Panels/WaveformPanel.h"
 #include "juce_audio_formats/juce_audio_formats.h"

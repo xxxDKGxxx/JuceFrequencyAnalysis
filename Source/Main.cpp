@@ -7,7 +7,9 @@ public:
   //==============================================================================
   JUCE_TutorialApplication() {}
 
-  const juce::String getApplicationName() override { return "Sound Analyzer"; }
+  const juce::String getApplicationName() override {
+    return "Frequency Analyzer";
+  }
   const juce::String getApplicationVersion() override { return "1.0"; }
   bool moreThanOneInstanceAllowed() override { return true; }
 
