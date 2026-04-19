@@ -55,6 +55,7 @@ public:
     std::vector<float> bandwidth;
     std::vector<float> flatness;
     std::vector<float> crestFactor;
+    std::vector<float> f0Cepstrum;
   };
   const GlobalSeries &getGlobalSeries() const { return globalSeries; }
 

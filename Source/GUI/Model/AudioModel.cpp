@@ -59,6 +59,7 @@ void AudioModel::calculateGlobalFeatures() {
   globalSeries.bandwidth.clear();
   globalSeries.flatness.clear();
   globalSeries.crestFactor.clear();
+  globalSeries.f0Cepstrum.clear();
 
   int numFrames = static_cast<int>(lengthInSamples / frameSize);
   if (numFrames == 0)
@@ -70,6 +71,7 @@ void AudioModel::calculateGlobalFeatures() {
   globalSeries.bandwidth.reserve(numFrames);
   globalSeries.flatness.reserve(numFrames);
   globalSeries.crestFactor.reserve(numFrames);
+  globalSeries.f0Cepstrum.reserve(numFrames);
 
   int fftOrder = static_cast<int>(std::ceil(std::log2(frameSize)));
   int fftSize = 1 << fftOrder;
@@ -79,6 +81,7 @@ void AudioModel::calculateGlobalFeatures() {
   std::vector<float> frameBuffer(frameSize);
   std::vector<float> fftBuffer(fftSize * 2);
   std::vector<float> magSpectrum(numBins);
+  std::vector<float> cepstrumBuffer(fftSize * 2, 0.0f);
 
   const float *pRead = audioBuffer->getReadPointer(0);
 
@@ -100,6 +103,46 @@ void AudioModel::calculateGlobalFeatures() {
 
     AudioFeatures f_calc = AudioFeatures::calculate(magSpectrum, sampleRate);
 
+    // Cepstrum-based F0 estimation: C(tau) = |IFFT(log(|X| + eps))|
+    std::fill(cepstrumBuffer.begin(), cepstrumBuffer.end(), 0.0f);
+    std::copy(frameBuffer.begin(), frameBuffer.end(), cepstrumBuffer.begin());
+    fft.performRealOnlyForwardTransform(cepstrumBuffer.data());
+
+    constexpr float epsilon = 1e-12f;
+    for (int k = 0; k < numBins; ++k) {
+      float re = cepstrumBuffer[2 * k];
+      float im = cepstrumBuffer[2 * k + 1];
+      float mag = std::sqrt(re * re + im * im);
+      cepstrumBuffer[2 * k] = std::log(mag + epsilon);
+      cepstrumBuffer[2 * k + 1] = 0.0f;
+    }
+
+    for (int i = 2 * numBins; i < static_cast<int>(cepstrumBuffer.size()); ++i) {
+      cepstrumBuffer[i] = 0.0f;
+    }
+
+    fft.performRealOnlyInverseTransform(cepstrumBuffer.data());
+
+    int minQuefrency = static_cast<int>(std::floor(sampleRate / 400.0));
+    int maxQuefrency = static_cast<int>(std::ceil(sampleRate / 50.0));
+    minQuefrency = std::clamp(minQuefrency, 1, fftSize / 2);
+    maxQuefrency = std::clamp(maxQuefrency, minQuefrency + 1, fftSize - 1);
+
+    int bestQuefrency = minQuefrency;
+    float bestValue = 0.0f;
+    for (int q = minQuefrency; q <= maxQuefrency; ++q) {
+      float c = std::abs(cepstrumBuffer[q]);
+      if (c > bestValue) {
+        bestValue = c;
+        bestQuefrency = q;
+      }
+    }
+
+    float f0 = 0.0f;
+    if (bestQuefrency > 0) {
+      f0 = static_cast<float>(sampleRate / static_cast<double>(bestQuefrency));
+    }
+
     globalSeries.time.push_back(static_cast<float>(start) /
                                 static_cast<float>(sampleRate));
     globalSeries.volume.push_back(f_calc.volume);
@@ -107,6 +150,7 @@ void AudioModel::calculateGlobalFeatures() {
     globalSeries.bandwidth.push_back(f_calc.effectiveBandwidth);
     globalSeries.flatness.push_back(f_calc.spectralFlatness);
     globalSeries.crestFactor.push_back(f_calc.spectralCrestFactor);
+    globalSeries.f0Cepstrum.push_back(f0);
   }
 }
 

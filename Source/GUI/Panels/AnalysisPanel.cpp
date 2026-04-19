@@ -56,8 +56,7 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
 
     ImGui::Checkbox("Normalised?", &AnalysisPanel::normalise);
 
-    // Use half of available space for trends, or fixed fraction
-    float trendsHeight = ImGui::GetContentRegionAvail().y * 0.45f;
+    float trendsHeight = 300.0f;
     const char *plotTitle = normalise ? "Global Feature Trends (Normalized)"
                                       : "Global Feature Trends";
     if (ImPlot::BeginPlot(plotTitle, ImVec2(-1, trendsHeight))) {
@@ -116,6 +115,22 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
 
       ImPlot::EndPlot();
     }
+
+    ImGui::Separator();
+
+    if (!series.f0Cepstrum.empty()) {
+      float f0PlotHeight = 260.0f;
+      if (ImPlot::BeginPlot("Glottal Frequency (Cepstrum)",
+                            ImVec2(-1, f0PlotHeight))) {
+        ImPlot::SetupAxes("Time (s)", "Frequency (Hz)");
+        ImPlot::SetupAxisLimits(ImAxis_X1, 0, pAudioModel->getLengthInSeconds(),
+                                ImGuiCond_Always);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, 50, 400, ImGuiCond_Always);
+        ImPlot::PlotLine("F0", series.time.data(), series.f0Cepstrum.data(),
+                         static_cast<int>(series.time.size()));
+        ImPlot::EndPlot();
+      }
+    }
   }
 
   ImGui::Separator();
@@ -127,8 +142,7 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
   float plotWidth =
       (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) *
       0.5f;
-  float topRegionHeight = ImGui::GetContentRegionAvail().y * 0.42f;
-  float plotHeight = std::max(140.0f, topRegionHeight);
+  float plotHeight = 260.0f;
 
   if (!windowedSignal.empty()) {
     if (ImPlot::BeginPlot("Windowed Signal", ImVec2(plotWidth, plotHeight))) {
@@ -158,7 +172,7 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
   ImGui::Separator();
 
   const auto &spectrogram = pAudioModel->getSpectrogramData();
-  float spectrogramHeight = std::max(180.0f, ImGui::GetContentRegionAvail().y);
+  float spectrogramHeight = std::max(420.0f, ImGui::GetContentRegionAvail().y);
 
   if (!spectrogram.valuesDb.empty() && spectrogram.timeBins > 0 &&
       spectrogram.freqBins > 0) {
