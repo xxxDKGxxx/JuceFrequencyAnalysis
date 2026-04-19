@@ -1,6 +1,8 @@
 #include "AnalysisPanel.h"
 #include "imgui.h"
 #include "implot.h"
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -20,6 +22,15 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
                    IM_ARRAYSIZE(windowNames))) {
     pAudioModel->setWindowType(
         static_cast<WindowFunctions::Type>(currentWindow));
+  }
+
+  ImGui::Separator();
+
+  // 1.7 Spectrogram overlap (hop control)
+  float overlapPercent = pAudioModel->getSpectrogramOverlap() * 100.0f;
+  if (ImGui::SliderFloat("Spectrogram overlap (%)", &overlapPercent, 0.0f,
+                         90.0f, "%.0f")) {
+    pAudioModel->setSpectrogramOverlap(overlapPercent / 100.0f);
   }
 
   ImGui::Separator();
@@ -116,7 +127,8 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
   float plotWidth =
       (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) *
       0.5f;
-  float plotHeight = ImGui::GetContentRegionAvail().y - 10;
+  float topRegionHeight = ImGui::GetContentRegionAvail().y * 0.42f;
+  float plotHeight = std::max(140.0f, topRegionHeight);
 
   if (!windowedSignal.empty()) {
     if (ImPlot::BeginPlot("Windowed Signal", ImVec2(plotWidth, plotHeight))) {
@@ -141,5 +153,34 @@ void AnalysisPanel::render(AudioModel *pAudioModel, int width, int height) {
                        static_cast<int>(magnitudeSpectrum.size()), binWidth);
       ImPlot::EndPlot();
     }
+  }
+
+  ImGui::Separator();
+
+  const auto &spectrogram = pAudioModel->getSpectrogramData();
+  float spectrogramHeight = std::max(180.0f, ImGui::GetContentRegionAvail().y);
+
+  if (!spectrogram.valuesDb.empty() && spectrogram.timeBins > 0 &&
+      spectrogram.freqBins > 0) {
+    if (ImPlot::BeginPlot("Spectrogram (dB)", ImVec2(-1, spectrogramHeight))) {
+      ImPlot::SetupAxes("Time (s)", "Frequency (Hz)");
+      ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, spectrogram.durationSeconds,
+                              ImGuiCond_Always);
+      ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, spectrogram.maxFrequencyHz,
+                              ImGuiCond_Always);
+
+      ImPlot::PushColormap(ImPlotColormap_Viridis);
+      ImPlot::PlotHeatmap("##spec", spectrogram.valuesDb.data(),
+                          spectrogram.freqBins, spectrogram.timeBins,
+                          spectrogram.minDb, spectrogram.maxDb, nullptr,
+                          ImPlotPoint(0.0, 0.0),
+                          ImPlotPoint(spectrogram.durationSeconds,
+                                      spectrogram.maxFrequencyHz));
+      ImPlot::PopColormap();
+
+      ImPlot::EndPlot();
+    }
+  } else {
+    ImGui::TextDisabled("Spectrogram unavailable for current signal.");
   }
 }
