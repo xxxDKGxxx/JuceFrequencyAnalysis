@@ -33,6 +33,7 @@ public:
   void setSelection(double startSeconds, double endSeconds);
   void setWindowType(WindowFunctions::Type type);
   void setFrameSize(int newSize);
+  void setSpectrogramOverlap(float newOverlap);
 
   const std::vector<float> &getMagnitudeSpectrum() const {
     return magnitudeSpectrum;
@@ -44,6 +45,7 @@ public:
   double getSelectionEnd() const { return selectionEnd; }
   WindowFunctions::Type getWindowType() const { return windowType; }
   int getFrameSize() const { return frameSize; }
+  float getSpectrogramOverlap() const { return spectrogramOverlap; }
 
   // Global Time-Series Features
   struct GlobalSeries {
@@ -53,8 +55,20 @@ public:
     std::vector<float> bandwidth;
     std::vector<float> flatness;
     std::vector<float> crestFactor;
+    std::vector<float> f0Cepstrum;
   };
   const GlobalSeries &getGlobalSeries() const { return globalSeries; }
+
+  struct SpectrogramData {
+    std::vector<float> valuesDb;
+    int timeBins = 0;
+    int freqBins = 0;
+    double durationSeconds = 0.0;
+    double maxFrequencyHz = 0.0;
+    float minDb = -120.0f;
+    float maxDb = 0.0f;
+  };
+  const SpectrogramData &getSpectrogramData() const { return spectrogramData; }
 
 private:
   std::unique_ptr<juce::AudioBuffer<float>> audioBuffer;
@@ -71,14 +85,17 @@ private:
   double selectionEnd = 0.0;
   WindowFunctions::Type windowType = WindowFunctions::Type::Rectangular;
   int frameSize = 512;
+  float spectrogramOverlap = 0.5f;
 
   std::vector<float> windowedSignal;
   std::vector<float> magnitudeSpectrum;
   AudioFeatures features;
 
   GlobalSeries globalSeries;
+  SpectrogramData spectrogramData;
 
   void calculateVisualWaveform();
   void updateAnalysis();
   void calculateGlobalFeatures();
+  void calculateSpectrogram();
 };

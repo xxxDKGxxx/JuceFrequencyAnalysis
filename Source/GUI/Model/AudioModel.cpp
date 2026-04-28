@@ -1,6 +1,7 @@
 #include "AudioModel.h"
 #include "juce_core/juce_core.h"
 #include <algorithm>
+#include <cmath>
 
 AudioModel::AudioModel(std::unique_ptr<juce::AudioBuffer<float>> audioBuffer,
                        double sampleRate, unsigned int bitsPerSample,
@@ -15,6 +16,7 @@ AudioModel::AudioModel(std::unique_ptr<juce::AudioBuffer<float>> audioBuffer,
   selectionEnd = getLengthInSeconds();
   updateAnalysis();
   calculateGlobalFeatures();
+  calculateSpectrogram();
 }
 
 void AudioModel::setSelection(double startSeconds, double endSeconds) {
@@ -27,6 +29,7 @@ void AudioModel::setWindowType(WindowFunctions::Type type) {
   windowType = type;
   updateAnalysis();
   calculateGlobalFeatures(); // Re-calculate trends because window changed
+  calculateSpectrogram();
 }
 
 void AudioModel::setFrameSize(int newSize) {
@@ -34,6 +37,16 @@ void AudioModel::setFrameSize(int newSize) {
     return;
   frameSize = newSize;
   calculateGlobalFeatures();
+  calculateSpectrogram();
+}
+
+void AudioModel::setSpectrogramOverlap(float newOverlap) {
+  float clamped = std::clamp(newOverlap, 0.0f, 0.95f);
+  if (std::abs(clamped - spectrogramOverlap) < 1e-4f)
+    return;
+
+  spectrogramOverlap = clamped;
+  calculateSpectrogram();
 }
 
 void AudioModel::calculateGlobalFeatures() {
@@ -46,6 +59,7 @@ void AudioModel::calculateGlobalFeatures() {
   globalSeries.bandwidth.clear();
   globalSeries.flatness.clear();
   globalSeries.crestFactor.clear();
+  globalSeries.f0Cepstrum.clear();
 
   int numFrames = static_cast<int>(lengthInSamples / frameSize);
   if (numFrames == 0)
@@ -57,6 +71,7 @@ void AudioModel::calculateGlobalFeatures() {
   globalSeries.bandwidth.reserve(numFrames);
   globalSeries.flatness.reserve(numFrames);
   globalSeries.crestFactor.reserve(numFrames);
+  globalSeries.f0Cepstrum.reserve(numFrames);
 
   int fftOrder = static_cast<int>(std::ceil(std::log2(frameSize)));
   int fftSize = 1 << fftOrder;
@@ -66,6 +81,7 @@ void AudioModel::calculateGlobalFeatures() {
   std::vector<float> frameBuffer(frameSize);
   std::vector<float> fftBuffer(fftSize * 2);
   std::vector<float> magSpectrum(numBins);
+  std::vector<float> cepstrumBuffer(fftSize * 2, 0.0f);
 
   const float *pRead = audioBuffer->getReadPointer(0);
 
@@ -87,6 +103,46 @@ void AudioModel::calculateGlobalFeatures() {
 
     AudioFeatures f_calc = AudioFeatures::calculate(magSpectrum, sampleRate);
 
+    // Cepstrum-based F0 estimation: C(tau) = |IFFT(log(|X| + eps))|
+    std::fill(cepstrumBuffer.begin(), cepstrumBuffer.end(), 0.0f);
+    std::copy(frameBuffer.begin(), frameBuffer.end(), cepstrumBuffer.begin());
+    fft.performRealOnlyForwardTransform(cepstrumBuffer.data());
+
+    constexpr float epsilon = 1e-12f;
+    for (int k = 0; k < numBins; ++k) {
+      float re = cepstrumBuffer[2 * k];
+      float im = cepstrumBuffer[2 * k + 1];
+      float mag = std::sqrt(re * re + im * im);
+      cepstrumBuffer[2 * k] = std::log(mag + epsilon);
+      cepstrumBuffer[2 * k + 1] = 0.0f;
+    }
+
+    for (int i = 2 * numBins; i < static_cast<int>(cepstrumBuffer.size()); ++i) {
+      cepstrumBuffer[i] = 0.0f;
+    }
+
+    fft.performRealOnlyInverseTransform(cepstrumBuffer.data());
+
+    int minQuefrency = static_cast<int>(std::floor(sampleRate / 400.0));
+    int maxQuefrency = static_cast<int>(std::ceil(sampleRate / 50.0));
+    minQuefrency = std::clamp(minQuefrency, 1, fftSize / 2);
+    maxQuefrency = std::clamp(maxQuefrency, minQuefrency + 1, fftSize - 1);
+
+    int bestQuefrency = minQuefrency;
+    float bestValue = 0.0f;
+    for (int q = minQuefrency; q <= maxQuefrency; ++q) {
+      float c = std::abs(cepstrumBuffer[q]);
+      if (c > bestValue) {
+        bestValue = c;
+        bestQuefrency = q;
+      }
+    }
+
+    float f0 = 0.0f;
+    if (bestQuefrency > 0) {
+      f0 = static_cast<float>(sampleRate / static_cast<double>(bestQuefrency));
+    }
+
     globalSeries.time.push_back(static_cast<float>(start) /
                                 static_cast<float>(sampleRate));
     globalSeries.volume.push_back(f_calc.volume);
@@ -94,6 +150,85 @@ void AudioModel::calculateGlobalFeatures() {
     globalSeries.bandwidth.push_back(f_calc.effectiveBandwidth);
     globalSeries.flatness.push_back(f_calc.spectralFlatness);
     globalSeries.crestFactor.push_back(f_calc.spectralCrestFactor);
+    globalSeries.f0Cepstrum.push_back(f0);
+  }
+}
+
+void AudioModel::calculateSpectrogram() {
+  spectrogramData = SpectrogramData{};
+
+  if (lengthInSamples <= 0 || frameSize <= 0)
+    return;
+
+  int fftOrder = static_cast<int>(std::ceil(std::log2(frameSize)));
+  int fftSize = 1 << fftOrder;
+  int numBins = fftSize / 2 + 1;
+
+  int overlapSamples = static_cast<int>(std::round(frameSize * spectrogramOverlap));
+  int hopSize = std::max(1, frameSize - overlapSamples);
+  int usableSamples = static_cast<int>(lengthInSamples);
+
+  int numFrames = 1;
+  if (usableSamples > frameSize) {
+    numFrames = 1 + (usableSamples - frameSize) / hopSize;
+  }
+
+  spectrogramData.timeBins = numFrames;
+  spectrogramData.freqBins = numBins;
+  spectrogramData.durationSeconds = getLengthInSeconds();
+  spectrogramData.maxFrequencyHz = sampleRate / 2.0;
+
+  std::vector<float> dbValues(static_cast<size_t>(numBins) * numFrames,
+                              -120.0f);
+  std::vector<float> frameBuffer(frameSize, 0.0f);
+  std::vector<float> fftBuffer(fftSize * 2, 0.0f);
+
+  juce::dsp::FFT fft(fftOrder);
+  const float *pRead = audioBuffer->getReadPointer(0);
+
+  constexpr float epsilon = 1e-12f;
+  float maxDb = -1e9f;
+
+  for (int frame = 0; frame < numFrames; ++frame) {
+    int start = frame * hopSize;
+
+    std::fill(frameBuffer.begin(), frameBuffer.end(), 0.0f);
+    for (int i = 0; i < frameSize; ++i) {
+      int idx = start + i;
+      if (idx >= usableSamples)
+        break;
+      frameBuffer[i] = pRead[idx];
+    }
+
+    WindowFunctions::apply(windowType, frameBuffer);
+
+    std::fill(fftBuffer.begin(), fftBuffer.end(), 0.0f);
+    std::copy(frameBuffer.begin(), frameBuffer.end(), fftBuffer.begin());
+    fft.performFrequencyOnlyForwardTransform(fftBuffer.data());
+
+    for (int bin = 0; bin < numBins; ++bin) {
+      float mag = fftBuffer[bin];
+      float db = 20.0f * std::log10(mag + epsilon);
+
+      // ImPlot heatmap row 0 appears at the top. Store high frequencies first
+      // so that low frequencies are shown at the bottom.
+      int row = (numBins - 1 - bin);
+      dbValues[static_cast<size_t>(row) * numFrames + frame] = db;
+      if (db > maxDb)
+        maxDb = db;
+    }
+  }
+
+  spectrogramData.minDb = -80.0f;
+  spectrogramData.maxDb = 0.0f;
+  spectrogramData.valuesDb.resize(static_cast<size_t>(numBins) * numFrames,
+                                  spectrogramData.minDb);
+
+  for (size_t i = 0; i < dbValues.size(); ++i) {
+    // Normalize so strongest bin is 0 dB, then clamp displayed range.
+    float relDb = dbValues[i] - maxDb;
+    spectrogramData.valuesDb[i] =
+        std::clamp(relDb, spectrogramData.minDb, spectrogramData.maxDb);
   }
 }
 

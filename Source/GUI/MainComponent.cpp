@@ -144,10 +144,9 @@ void MainComponent::renderOpenGL() {
     ImGui::End();
   }
 
-  auto commonFlags =
-      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize |
-      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-      ImGuiWindowFlags_NoBringToFrontOnFocus |
+    auto commonFlags =
+      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus |
       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavFocus;
 
   {
